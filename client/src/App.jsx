@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ProviderLogin from './ProviderLogin.jsx'
 import ProviderRegistration from './ProviderRegistration.jsx'
 import PropertyDashboard from './PropertyDashboard.jsx'
 import PropertyListing from './PropertyListing.jsx'
@@ -12,6 +13,7 @@ function App() {
   const [searchTerm, setSearchTerm] = useState('')
   const [searchNotice, setSearchNotice] = useState('')
   const isProviderRegistration = window.location.pathname === '/provider-registration'
+  const isProviderLogin = window.location.pathname === '/provider-login'
   const isPropertyDashboard = window.location.pathname === '/property-dashboard'
   const isPropertyListing = window.location.pathname === '/property-listing'
   const isPropertyResults = window.location.pathname === '/properties'
@@ -71,6 +73,11 @@ function App() {
                 </a>
               </li>
               <li className="nav-item">
+                <a className="nav-link text-white" href="/provider-login">
+                  Provider Sign In
+                </a>
+              </li>
+              <li className="nav-item">
                 <a className="nav-link text-white" href="/property-dashboard">
                   Property Dashboard
                 </a>
@@ -92,6 +99,8 @@ function App() {
 
       {isProviderRegistration ? (
         <ProviderRegistration />
+      ) : isProviderLogin ? (
+        <ProviderLogin />
       ) : isPropertyDashboard ? (
         <PropertyDashboard />
       ) : isPropertyListing ? (

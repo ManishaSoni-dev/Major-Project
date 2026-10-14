@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { apiRequest } from './api.js'
 
 function ProviderRegistration() {
   const [notice, setNotice] = useState('')
@@ -9,6 +10,7 @@ function ProviderRegistration() {
   const [serviceAreas, setServiceAreas] = useState([])
   const [propertyLocationInput, setPropertyLocationInput] = useState('')
   const [propertyLocations, setPropertyLocations] = useState([])
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const serviceCategories = [
     'Plumbing',
@@ -80,7 +82,7 @@ function ProviderRegistration() {
     )
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     if (providesProperties && propertyProviderRoles.length === 0) {
       setNotice('Select at least one property provider type.')
@@ -98,7 +100,38 @@ function ProviderRegistration() {
       setNotice('Add at least one service area.')
       return
     }
-    window.location.assign('/property-dashboard?registration=preview')
+    const formData = new FormData(event.currentTarget)
+    const password = formData.get('password')
+    if (password !== formData.get('confirmPassword')) {
+      setNotice('The passwords do not match.')
+      return
+    }
+
+    setNotice('')
+    setIsSubmitting(true)
+    try {
+      await apiRequest('/auth/register', {
+        method: 'POST',
+        body: {
+          fullName: formData.get('providerName'),
+          email: formData.get('email'),
+          phone: formData.get('phone'),
+          businessName: formData.get('businessName'),
+          providerType,
+          password,
+          description: formData.get('description'),
+          propertyProviderRoles,
+          propertyCategories: providesProperties ? [formData.get('propertyCategory')] : [],
+          propertyLocations,
+          serviceCategories: selectedCategories,
+          serviceAreas,
+        },
+      })
+      window.location.assign('/property-dashboard')
+    } catch (requestError) {
+      setNotice(requestError.message)
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -143,6 +176,33 @@ function ProviderRegistration() {
                     name="email"
                     type="email"
                     autoComplete="email"
+                    required
+                  />
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label" htmlFor="providerPassword">Create password</label>
+                  <input
+                    className="form-control"
+                    id="providerPassword"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    maxLength={128}
+                    required
+                  />
+                  <div className="form-text">Use at least 8 characters.</div>
+                </div>
+                <div className="col-md-6">
+                  <label className="form-label" htmlFor="confirmPassword">Confirm password</label>
+                  <input
+                    className="form-control"
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    autoComplete="new-password"
+                    minLength={8}
+                    maxLength={128}
                     required
                   />
                 </div>
@@ -345,13 +405,13 @@ function ProviderRegistration() {
                 </div>
               </div>
 
-              {notice && <div className="alert alert-info mt-4 mb-0" role="status">{notice}</div>}
+              {notice && <div className="alert alert-danger mt-4 mb-0" role="alert">{notice}</div>}
 
-              <button className="btn btn-primary w-100 mt-4" type="submit">
-                Submit registration
+              <button className="btn btn-primary w-100 mt-4" type="submit" disabled={isSubmitting}>
+                {isSubmitting ? 'Creating account...' : 'Create provider account'}
               </button>
               <p className="small text-secondary text-center mt-3 mb-0">
-                Submitting this form does not create an account yet.
+                Already registered? <a href="/provider-login">Sign in</a>
               </p>
             </div>
           </form>

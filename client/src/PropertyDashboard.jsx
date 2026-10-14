@@ -1,118 +1,118 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { apiRequest } from './api.js'
 
-const initialListings = [
-  {
-    id: 1,
-    title: '2-Bedroom Apartment',
-    location: 'Andheri West, Mumbai',
-    type: 'For rent',
-    price: '₹32,000 / month',
-    status: 'Active',
-    views: 128,
-    inquiries: 8,
-  },
-  {
-    id: 2,
-    title: 'Family House with Garden',
-    location: 'Baner, Pune',
-    type: 'For sale',
-    price: '₹1.25 Cr',
-    status: 'Pending review',
-    views: 64,
-    inquiries: 3,
-  },
-  {
-    id: 3,
-    title: 'Studio Apartment',
-    location: 'HSR Layout, Bengaluru',
-    type: 'For rent',
-    price: '₹18,500 / month',
-    status: 'Paused',
-    views: 91,
-    inquiries: 5,
-  },
-]
+function formatPrice(price) {
+  return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(price))}`
+}
 
 function PropertyDashboard() {
-  const [listings, setListings] = useState(initialListings)
+  const [listings, setListings] = useState([])
+  const [provider, setProvider] = useState(null)
   const [notice, setNotice] = useState('')
-  const registrationPreview = new URLSearchParams(window.location.search).get('registration') === 'preview'
-  const activeCount = listings.filter((listing) => listing.status === 'Active').length
-  const totalInquiries = listings.reduce((total, listing) => total + listing.inquiries, 0)
-  const totalViews = listings.reduce((total, listing) => total + listing.views, 0)
+  const [error, setError] = useState('')
+  const [isLoading, setIsLoading] = useState(true)
 
-  function toggleListingStatus(id) {
-    setListings((current) => current.map((listing) => {
-      if (listing.id !== id || listing.status === 'Pending review') {
-        return listing
-      }
+  useEffect(() => {
+    let isMounted = true
 
-      return { ...listing, status: listing.status === 'Active' ? 'Paused' : 'Active' }
-    }))
-    setNotice('Listing status updated in this demo dashboard. Changes are not saved to an account.')
+    Promise.all([apiRequest('/auth/me'), apiRequest('/property-listings/mine')])
+      .then(([account, result]) => {
+        if (!isMounted) return
+        setProvider(account.provider)
+        setListings(result.listings)
+      })
+      .catch((requestError) => {
+        if (isMounted) setError(requestError.message)
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  async function toggleListingStatus(listing) {
+    const nextStatus = listing.status === 'active' ? 'paused' : 'active'
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/property-listings/${listing.id}/status`, {
+        method: 'POST',
+        body: { status: nextStatus },
+      })
+      setListings((current) => current.map((item) => (
+        item.id === listing.id ? { ...item, status: nextStatus } : item
+      )))
+      setNotice(`Listing ${nextStatus === 'active' ? 'activated' : 'paused'}.`)
+    } catch (requestError) {
+      setError(requestError.message)
+    }
   }
+
+  async function signOut() {
+    setError('')
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' })
+      window.location.assign('/provider-login')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
+  const activeCount = listings.filter((listing) => listing.status === 'active').length
+  const pausedCount = listings.filter((listing) => listing.status === 'paused').length
 
   return (
     <main className="container py-5">
       <div className="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
         <div>
           <h1 className="h2 fw-bold mb-1">Property Provider Dashboard</h1>
-          <p className="text-secondary mb-0">Manage your property listings and track customer interest.</p>
+          <p className="text-secondary mb-0">
+            {provider ? `Welcome, ${provider.fullName}. Manage your property listings here.` : 'Manage your property listings.'}
+          </p>
         </div>
-        <a className="btn btn-primary" href="/property-listing">Add a property</a>
+        <div className="d-flex gap-2">
+          <a className="btn btn-primary" href="/property-listing">Add a property</a>
+          <button className="btn btn-outline-secondary" type="button" onClick={signOut}>Sign out</button>
+        </div>
       </div>
 
-      <div className="alert alert-info" role="note">
-        Demo dashboard: the figures and listings below are sample data. Account and listing data are not connected to a backend yet.
-      </div>
-      {registrationPreview && (
-        <div className="alert alert-warning" role="status">
-          Your registration form passed its checks, but your details were not saved because account registration is not connected to a backend yet.
+      {error && (
+        <div className="alert alert-danger" role="alert">
+          {error}
+          {error.includes('Sign in') || error.includes('session expired')
+            ? <> <a className="alert-link" href="/provider-login">Sign in</a> to view your listings.</>
+            : null}
         </div>
       )}
+      {notice && <div className="alert alert-success" role="status">{notice}</div>}
 
       <section className="row g-3 mb-4" aria-label="Property listing summary">
-        <div className="col-sm-6 col-xl-3">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body">
-              <p className="text-secondary mb-2">Total listings</p>
-              <p className="h3 fw-bold mb-0">{listings.length}</p>
+        {[
+          ['Total listings', listings.length],
+          ['Active listings', activeCount],
+          ['Paused listings', pausedCount],
+        ].map(([label, value]) => (
+          <div className="col-sm-6 col-xl-4" key={label}>
+            <div className="card border-0 shadow-sm h-100">
+              <div className="card-body">
+                <p className="text-secondary mb-2">{label}</p>
+                <p className="h3 fw-bold mb-0">{isLoading ? '—' : value}</p>
+              </div>
             </div>
           </div>
-        </div>
-        <div className="col-sm-6 col-xl-3">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body">
-              <p className="text-secondary mb-2">Active listings</p>
-              <p className="h3 fw-bold mb-0">{activeCount}</p>
-            </div>
-          </div>
-        </div>
-        <div className="col-sm-6 col-xl-3">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body">
-              <p className="text-secondary mb-2">Total views</p>
-              <p className="h3 fw-bold mb-0">{totalViews}</p>
-            </div>
-          </div>
-        </div>
-        <div className="col-sm-6 col-xl-3">
-          <div className="card border-0 shadow-sm h-100">
-            <div className="card-body">
-              <p className="text-secondary mb-2">Customer inquiries</p>
-              <p className="h3 fw-bold mb-0">{totalInquiries}</p>
-            </div>
-          </div>
-        </div>
+        ))}
       </section>
-
-      {notice && <div className="alert alert-success" role="status">{notice}</div>}
 
       <section className="card border-0 shadow-sm mb-4">
         <div className="card-header bg-white py-3">
           <h2 className="h5 fw-bold mb-0">Your property listings</h2>
         </div>
-        {listings.length === 0 ? (
+        {isLoading ? (
+          <div className="card-body py-5 text-center" role="status">Loading your listings...</div>
+        ) : listings.length === 0 ? (
           <div className="card-body text-center py-5">
             <p className="mb-3">You have no property listings yet.</p>
             <a className="btn btn-primary" href="/property-listing">Create your first listing</a>
@@ -124,7 +124,7 @@ function PropertyDashboard() {
                 <tr>
                   <th scope="col">Property</th>
                   <th scope="col">Type &amp; price</th>
-                  <th scope="col">Performance</th>
+                  <th scope="col">Purpose</th>
                   <th scope="col">Status</th>
                   <th scope="col"><span className="visually-hidden">Actions</span></th>
                 </tr>
@@ -134,37 +134,26 @@ function PropertyDashboard() {
                   <tr key={listing.id}>
                     <td>
                       <div className="fw-semibold">{listing.title}</div>
-                      <div className="small text-secondary">{listing.location}</div>
+                      <div className="small text-secondary">{listing.locality}, {listing.city}</div>
                     </td>
                     <td>
                       <div>{listing.type}</div>
-                      <div className="small text-secondary">{listing.price}</div>
+                      <div className="small text-secondary">{formatPrice(listing.price)}</div>
                     </td>
+                    <td className="text-capitalize">{listing.purpose}</td>
                     <td>
-                      <div>{listing.views} views</div>
-                      <div className="small text-secondary">{listing.inquiries} inquiries</div>
-                    </td>
-                    <td>
-                      <span className={`badge ${
-                        listing.status === 'Active'
-                          ? 'text-bg-success'
-                          : listing.status === 'Pending review'
-                            ? 'text-bg-warning'
-                            : 'text-bg-secondary'
-                      }`}>
+                      <span className={`badge ${listing.status === 'active' ? 'text-bg-success' : 'text-bg-secondary'}`}>
                         {listing.status}
                       </span>
                     </td>
                     <td className="text-end">
-                      {listing.status !== 'Pending review' && (
-                        <button
-                          className="btn btn-sm btn-outline-primary"
-                          type="button"
-                          onClick={() => toggleListingStatus(listing.id)}
-                        >
-                          {listing.status === 'Active' ? 'Pause' : 'Activate'}
-                        </button>
-                      )}
+                      <button
+                        className="btn btn-sm btn-outline-primary"
+                        type="button"
+                        onClick={() => toggleListingStatus(listing)}
+                      >
+                        {listing.status === 'active' ? 'Pause' : 'Activate'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -176,11 +165,9 @@ function PropertyDashboard() {
 
       <section className="card border-0 shadow-sm">
         <div className="card-body">
-          <h2 className="h5 fw-bold">Getting started</h2>
-          <p className="text-secondary mb-3">
-            Complete your provider profile and add clear photos and accurate details to help customers find your properties.
-          </p>
-          <a href="/provider-registration">Go to provider registration</a>
+          <h2 className="h5 fw-bold">Need to list a service too?</h2>
+          <p className="text-secondary mb-3">Create a service listing from your provider account.</p>
+          <a href="/service-listing">List a service</a>
         </div>
       </section>
     </main>

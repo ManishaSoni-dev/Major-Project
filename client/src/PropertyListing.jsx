@@ -1,11 +1,28 @@
 import { useState } from 'react'
+import { apiRequest } from './api.js'
 
 function PropertyListing() {
   const [submitted, setSubmitted] = useState(false)
+  const [notice, setNotice] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
-    setSubmitted(true)
+    setNotice('')
+    setSubmitted(false)
+    setIsSubmitting(true)
+
+    try {
+      await apiRequest('/property-listings', {
+        method: 'POST',
+        body: new FormData(event.currentTarget),
+      })
+      setSubmitted(true)
+    } catch (requestError) {
+      setNotice(requestError.message)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -23,14 +40,16 @@ function PropertyListing() {
           </div>
 
           <div className="alert alert-info" role="note">
-            Listing submission is not connected to a backend yet. Your information will not be saved or published.
+            Your listing will be saved and published. Contact details come from your provider profile.
           </div>
 
           {submitted && (
-            <div className="alert alert-warning" role="status">
-              The form passed validation, but your listing was not saved because listing submission is not connected yet.
+            <div className="alert alert-success" role="status">
+              Your property listing was saved. You can manage it from your dashboard.
+              {' '}<a href="/property-dashboard" className="alert-link">Open dashboard</a>
             </div>
           )}
+          {notice && <div className="alert alert-danger" role="alert">{notice}</div>}
           <form className="card border-0 shadow-sm" onSubmit={handleSubmit}>
             <div className="card-body p-4 p-md-5">
               <div className="row g-3">
@@ -41,10 +60,10 @@ function PropertyListing() {
                     id="listingPhotos"
                     name="photos"
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     multiple
                   />
-                  <div className="form-text">You can select multiple images. Photos will not be uploaded until listing submission is connected.</div>
+                  <div className="form-text">Upload up to 8 JPEG, PNG, or WebP images, up to 5 MB each.</div>
                 </div>
 
                 <div className="col-12">
@@ -184,34 +203,6 @@ function PropertyListing() {
                   />
                 </div>
 
-                <div className="col-md-6">
-                  <label className="form-label" htmlFor="contactName">Contact name</label>
-                  <input
-                    className="form-control"
-                    id="contactName"
-                    name="contactName"
-                    autoComplete="name"
-                    required
-                  />
-                </div>
-
-                <div className="col-md-6">
-                  <label className="form-label" htmlFor="contactPhone">Contact mobile number</label>
-                  <input
-                    className="form-control"
-                    id="contactPhone"
-                    name="contactPhone"
-                    type="tel"
-                    inputMode="numeric"
-                    autoComplete="tel-national"
-                    pattern="[6-9][0-9]{9}"
-                    maxLength={10}
-                    title="Enter exactly 10 digits, starting with 6, 7, 8, or 9."
-                    placeholder="10-digit Indian mobile number"
-                    required
-                  />
-                </div>
-
                 <div className="col-12">
                   <label className="form-label" htmlFor="listingDescription">Description</label>
                   <textarea
@@ -228,7 +219,9 @@ function PropertyListing() {
               </div>
 
               <div className="d-flex flex-column flex-sm-row gap-2 mt-4">
-                <button className="btn btn-primary" type="submit">Preview listing</button>
+                <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Saving listing...' : 'Publish property listing'}
+                </button>
                 <a className="btn btn-outline-secondary" href="/property-dashboard">Cancel</a>
               </div>
             </div>
