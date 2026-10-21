@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { apiRequest } from './api.js'
+import { API_ORIGIN, apiRequest } from './api.js'
 
 function formatPrice(price) {
   return `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(price))}`
@@ -133,8 +133,32 @@ function PropertyDashboard() {
                 {listings.map((listing) => (
                   <tr key={listing.id}>
                     <td>
-                      <div className="fw-semibold">{listing.title}</div>
-                      <div className="small text-secondary">{listing.locality}, {listing.city}</div>
+                      <div className="d-flex align-items-center gap-3">
+                        {listing.images?.[0] ? (
+                          <img
+                            src={`${API_ORIGIN}${listing.images[0]}`}
+                            alt={`Photo of ${listing.title}`}
+                            loading="lazy"
+                            className="rounded object-fit-cover flex-shrink-0"
+                            style={{ width: '72px', height: '60px' }}
+                          />
+                        ) : (
+                          <div
+                            className="bg-light rounded d-flex align-items-center justify-content-center text-secondary small flex-shrink-0"
+                            style={{ width: '72px', height: '60px' }}
+                            aria-label="No photos uploaded"
+                          >
+                            No photo
+                          </div>
+                        )}
+                        <div>
+                          <div className="fw-semibold">{listing.title}</div>
+                          <div className="small text-secondary">{listing.locality}, {listing.city}</div>
+                          {listing.images?.length > 1 && (
+                            <div className="small text-secondary">{listing.images.length} photos</div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td>
                       <div>{listing.type}</div>

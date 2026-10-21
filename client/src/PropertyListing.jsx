@@ -1,10 +1,55 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiRequest } from './api.js'
 
 function PropertyListing() {
   const [submitted, setSubmitted] = useState(false)
   const [notice, setNotice] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedPhotos, setSelectedPhotos] = useState([])
+  const [photoPreviews, setPhotoPreviews] = useState([])
+  const photoPreviewUrls = useRef([])
+
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.current.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [])
+
+  function handlePhotoSelection(event) {
+    const photos = Array.from(event.currentTarget.files || [])
+    event.currentTarget.value = ''
+    if (selectedPhotos.length + photos.length > 8) {
+      setNotice('You can add up to 8 photos. Remove a photo before adding another.')
+      return
+    }
+    if (photos.some((photo) => photo.size > 5 * 1024 * 1024)) {
+      setNotice('Each photo must be 5 MB or smaller.')
+      return
+    }
+    if (photos.some((photo) => !['image/jpeg', 'image/png', 'image/webp'].includes(photo.type))) {
+      setNotice('Photos must be JPEG, PNG, or WebP images.')
+      return
+    }
+
+    setNotice('')
+    const addedPhotos = photos.map((photo) => {
+      const url = URL.createObjectURL(photo)
+      photoPreviewUrls.current.push(url)
+      return { file: photo, url }
+    })
+    setSelectedPhotos((current) => [...current, ...addedPhotos])
+    setPhotoPreviews((current) => [
+      ...current,
+      ...addedPhotos.map(({ file, url }) => ({ name: file.name, url })),
+    ])
+  }
+
+  function removePhoto(url) {
+    URL.revokeObjectURL(url)
+    photoPreviewUrls.current = photoPreviewUrls.current.filter((item) => item !== url)
+    setSelectedPhotos((current) => current.filter((photo) => photo.url !== url))
+    setPhotoPreviews((current) => current.filter((photo) => photo.url !== url))
+  }
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -13,9 +58,13 @@ function PropertyListing() {
     setIsSubmitting(true)
 
     try {
+      const formData = new FormData(event.currentTarget)
+      for (const photo of selectedPhotos) {
+        formData.append('photos', photo.file)
+      }
       await apiRequest('/property-listings', {
         method: 'POST',
-        body: new FormData(event.currentTarget),
+        body: formData,
       })
       setSubmitted(true)
     } catch (requestError) {
@@ -54,16 +103,38 @@ function PropertyListing() {
             <div className="card-body p-4 p-md-5">
               <div className="row g-3">
                 <div className="col-12">
-                  <label className="form-label" htmlFor="listingPhotos">Property photos</label>
+                  <label className="form-label" htmlFor="listingPhotos">Add property photos</label>
                   <input
                     className="form-control"
                     id="listingPhotos"
-                    name="photos"
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
-                    multiple
+                    onChange={handlePhotoSelection}
                   />
-                  <div className="form-text">Upload up to 8 JPEG, PNG, or WebP images, up to 5 MB each.</div>
+                  <div className="form-text">
+                    Choose one JPEG, PNG, or WebP image at a time. Select another file to add it; up to 8 photos, 5 MB each.
+                    {photoPreviews.length > 0 && ` ${photoPreviews.length} photos selected.`}
+                  </div>
+                  {photoPreviews.length > 0 && (
+                    <div className="d-flex flex-wrap gap-2 mt-3" aria-label="Selected property photo previews">
+                      {photoPreviews.map((preview) => (
+                        <div className="position-relative" key={preview.url}>
+                          <img
+                            src={preview.url}
+                            alt={`Selected property photo: ${preview.name}`}
+                            className="rounded object-fit-cover border"
+                            style={{ width: '100px', height: '80px' }}
+                          />
+                          <button
+                            className="btn-close position-absolute top-0 end-0 m-1 bg-white rounded-circle p-1"
+                            type="button"
+                            aria-label={`Remove ${preview.name}`}
+                            onClick={() => removePhoto(preview.url)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-12">

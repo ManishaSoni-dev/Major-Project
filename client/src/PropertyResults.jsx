@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_ORIGIN, apiRequest } from './api.js'
+import { apiRequest } from './api.js'
+import ListingImages from './ListingImages.jsx'
 
 const propertyTypes = [
   ['apartment', 'Apartment / flat'],
@@ -152,19 +153,7 @@ function PropertyResults() {
           {sortedListings.map((listing) => (
             <div className="col-md-6 col-xl-4" key={listing.id}>
               <article className="card h-100 border-0 shadow-sm overflow-hidden">
-                {listing.imageUrl ? (
-                  <img
-                    className="card-img-top"
-                    src={`${API_ORIGIN}${listing.imageUrl}`}
-                    alt={`Photos for ${listing.title}`}
-                    loading="lazy"
-                    style={{ height: '220px', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div className="bg-light d-flex align-items-center justify-content-center text-secondary" style={{ height: '220px' }}>
-                    No property photos
-                  </div>
-                )}
+                <ListingImages images={listing.images} title={listing.title} emptyLabel="No property photos" />
                 <div className="card-body d-flex flex-column">
                   <div className="d-flex justify-content-between gap-2 mb-2">
                     <span className="badge text-bg-primary">{listing.type}</span>

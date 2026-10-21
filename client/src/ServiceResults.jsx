@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { API_ORIGIN, apiRequest } from './api.js'
+import { apiRequest } from './api.js'
+import ListingImages from './ListingImages.jsx'
 
 const categories = [
   ['plumbing', 'Plumbing'],
@@ -139,19 +140,7 @@ function ServiceResults() {
           {sortedProviders.map((provider) => (
             <div className="col-md-6 col-xl-4" key={provider.id}>
               <article className="card h-100 border-0 shadow-sm overflow-hidden">
-                {provider.imageUrl ? (
-                  <img
-                    className="card-img-top"
-                    src={`${API_ORIGIN}${provider.imageUrl}`}
-                    alt={`Previous work by ${provider.providerName}`}
-                    loading="lazy"
-                    style={{ height: '220px', objectFit: 'cover' }}
-                  />
-                ) : (
-                  <div className="bg-light d-flex align-items-center justify-content-center text-secondary" style={{ height: '220px' }}>
-                    No work photos
-                  </div>
-                )}
+                <ListingImages images={provider.images} title={provider.title} emptyLabel="No work photos" />
                 <div className="card-body d-flex flex-column">
                   <span className="badge text-bg-primary align-self-start mb-2">{provider.category}</span>
                   <h2 className="h5 card-title">{provider.title}</h2>

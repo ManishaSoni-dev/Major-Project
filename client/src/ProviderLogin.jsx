@@ -12,14 +12,18 @@ function ProviderLogin() {
     const formData = new FormData(event.currentTarget)
 
     try {
-      await apiRequest('/auth/login', {
+      const result = await apiRequest('/auth/login', {
         method: 'POST',
         body: {
           email: formData.get('email'),
           password: formData.get('password'),
         },
       })
-      window.location.assign('/property-dashboard')
+      const dashboardPath = result.provider.providerTypes.includes('service')
+        && !result.provider.providerTypes.includes('property')
+        ? '/service-dashboard'
+        : '/property-dashboard'
+      window.location.assign(dashboardPath)
     } catch (requestError) {
       setError(requestError.message)
       setIsSubmitting(false)

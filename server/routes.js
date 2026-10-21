@@ -74,6 +74,18 @@ function positiveNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : null
 }
 
+async function getProviderTypes(providerId) {
+  const [rows] = await pool.execute(
+    `SELECT pt.code
+     FROM provider_provider_types ppt
+     JOIN provider_types pt ON pt.id = ppt.provider_type_id
+     WHERE ppt.provider_id = ?
+     ORDER BY pt.code`,
+    [providerId],
+  )
+  return rows.map((row) => row.code)
+}
+
 function imageExtension(file) {
   const bytes = file.buffer
   if (file.mimetype === 'image/jpeg'
@@ -240,7 +252,7 @@ router.post('/auth/register', requireFrontendOrigin, async (req, res, next) => {
     await connection.commit()
     setSessionCookie(res, sessionToken)
     res.status(201).json({
-      provider: { id: providerId, fullName, email, businessName },
+      provider: { id: providerId, fullName, email, businessName, providerTypes: typeCodes },
     })
   } catch (error) {
     await connection.rollback()
@@ -273,6 +285,7 @@ router.post('/auth/login', requireFrontendOrigin, async (req, res) => {
     return
   }
 
+  const providerTypes = await getProviderTypes(provider.id)
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
@@ -289,6 +302,7 @@ router.post('/auth/login', requireFrontendOrigin, async (req, res) => {
         fullName: provider.full_name,
         email: provider.email,
         businessName: provider.business_name,
+        providerTypes,
       },
     })
   } catch (error) {
@@ -299,9 +313,10 @@ router.post('/auth/login', requireFrontendOrigin, async (req, res) => {
   }
 })
 
-router.get('/auth/me', requireProvider, (req, res) => {
+router.get('/auth/me', requireProvider, async (req, res) => {
   const { id, full_name: fullName, email, business_name: businessName } = req.provider
-  res.json({ provider: { id, fullName, email, businessName } })
+  const providerTypes = await getProviderTypes(id)
+  res.json({ provider: { id, fullName, email, businessName, providerTypes } })
 })
 
 router.post('/auth/logout', requireFrontendOrigin, async (req, res) => {
@@ -447,6 +462,28 @@ router.get('/property-listings/mine', requireProvider, async (req, res) => {
      ORDER BY l.created_at DESC`,
     [req.provider.id],
   )
+
+  if (rows.length > 0) {
+    const listingIds = rows.map((listing) => listing.id)
+    const placeholders = listingIds.map(() => '?').join(', ')
+    const [images] = await pool.execute(
+      `SELECT property_listing_id AS listingId, image_url AS imageUrl
+       FROM property_listing_images
+       WHERE property_listing_id IN (${placeholders})
+       ORDER BY sort_order`,
+      listingIds,
+    )
+    const imagesByListing = new Map()
+    for (const image of images) {
+      const listingImages = imagesByListing.get(image.listingId) || []
+      listingImages.push(image.imageUrl)
+      imagesByListing.set(image.listingId, listingImages)
+    }
+    for (const listing of rows) {
+      listing.images = imagesByListing.get(listing.id) || []
+    }
+  }
+
   res.json({ listings: rows })
 })
 
@@ -511,9 +548,7 @@ router.get('/property-listings', async (req, res) => {
   const [rows] = await pool.execute(
     `SELECT l.id, l.title, t.name AS type, l.purpose, l.furnishing_status AS furnishingStatus,
             l.price, l.area_sqft AS areaSqft, l.bedrooms, l.bathrooms, l.city, l.locality,
-            l.description, p.business_name AS providerName,
-            (SELECT image_url FROM property_listing_images i
-             WHERE i.property_listing_id = l.id ORDER BY i.sort_order LIMIT 1) AS imageUrl
+            l.description, p.business_name AS providerName, l.created_at AS createdAt
      FROM property_listings l
      JOIN property_types t ON t.id = l.property_type_id
      JOIN providers p ON p.id = l.provider_id
@@ -522,6 +557,28 @@ router.get('/property-listings', async (req, res) => {
      LIMIT 100`,
     parameters,
   )
+
+  if (rows.length > 0) {
+    const listingIds = rows.map((listing) => listing.id)
+    const placeholders = listingIds.map(() => '?').join(', ')
+    const [images] = await pool.execute(
+      `SELECT property_listing_id AS listingId, image_url AS imageUrl
+       FROM property_listing_images
+       WHERE property_listing_id IN (${placeholders})
+       ORDER BY property_listing_id, sort_order`,
+      listingIds,
+    )
+    const imagesByListing = new Map()
+    for (const image of images) {
+      const listingImages = imagesByListing.get(image.listingId) || []
+      listingImages.push(image.imageUrl)
+      imagesByListing.set(image.listingId, listingImages)
+    }
+    for (const listing of rows) {
+      listing.images = imagesByListing.get(listing.id) || []
+    }
+  }
+
   res.json({ listings: rows })
 })
 
@@ -547,12 +604,10 @@ router.get('/service-listings', async (req, res) => {
 
   const [rows] = await pool.execute(
     `SELECT l.id, l.title, c.name AS category, l.price, l.pricing_unit AS pricingUnit,
-           l.description, p.business_name AS providerName, p.phone AS contactPhone,
-           l.created_at AS createdAt,
-            GROUP_CONCAT(DISTINCT a.area ORDER BY a.area SEPARATOR ', ') AS serviceAreas,
-            (SELECT image_url FROM service_listing_images i
-             WHERE i.service_listing_id = l.id ORDER BY i.sort_order LIMIT 1) AS imageUrl
-     FROM service_listings l
+          l.description, p.business_name AS providerName, p.phone AS contactPhone,
+          l.created_at AS createdAt,
+          GROUP_CONCAT(DISTINCT a.area ORDER BY a.area SEPARATOR ', ') AS serviceAreas
+    FROM service_listings l
      JOIN service_categories c ON c.id = l.category_id
      JOIN providers p ON p.id = l.provider_id
      LEFT JOIN service_listing_areas a ON a.service_listing_id = l.id
@@ -562,6 +617,28 @@ router.get('/service-listings', async (req, res) => {
      LIMIT 100`,
     parameters,
   )
+
+  if (rows.length > 0) {
+    const listingIds = rows.map((listing) => listing.id)
+    const placeholders = listingIds.map(() => '?').join(', ')
+    const [images] = await pool.execute(
+      `SELECT service_listing_id AS listingId, image_url AS imageUrl
+       FROM service_listing_images
+       WHERE service_listing_id IN (${placeholders})
+       ORDER BY service_listing_id, sort_order`,
+      listingIds,
+    )
+    const imagesByListing = new Map()
+    for (const image of images) {
+      const listingImages = imagesByListing.get(image.listingId) || []
+      listingImages.push(image.imageUrl)
+      imagesByListing.set(image.listingId, listingImages)
+    }
+    for (const listing of rows) {
+      listing.images = imagesByListing.get(listing.id) || []
+    }
+  }
+
   res.json({ listings: rows })
 })
 

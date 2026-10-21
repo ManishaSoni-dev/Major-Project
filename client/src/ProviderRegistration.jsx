@@ -127,7 +127,7 @@ function ProviderRegistration() {
           serviceAreas,
         },
       })
-      window.location.assign('/property-dashboard')
+      window.location.assign(providerType === 'service' ? '/service-dashboard' : '/property-dashboard')
     } catch (requestError) {
       setNotice(requestError.message)
       setIsSubmitting(false)

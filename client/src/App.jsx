@@ -4,6 +4,7 @@ import ProviderRegistration from './ProviderRegistration.jsx'
 import PropertyDashboard from './PropertyDashboard.jsx'
 import PropertyListing from './PropertyListing.jsx'
 import PropertyResults from './PropertyResults.jsx'
+import ServiceDashboard from './ServiceDashboard.jsx'
 import ServiceListing from './ServiceListing.jsx'
 import ServiceResults from './ServiceResults.jsx'
 import WorkGallery from './WorkGallery.jsx'
@@ -15,6 +16,7 @@ function App() {
   const isProviderRegistration = window.location.pathname === '/provider-registration'
   const isProviderLogin = window.location.pathname === '/provider-login'
   const isPropertyDashboard = window.location.pathname === '/property-dashboard'
+  const isServiceDashboard = window.location.pathname === '/service-dashboard'
   const isPropertyListing = window.location.pathname === '/property-listing'
   const isPropertyResults = window.location.pathname === '/properties'
   const isServiceListing = window.location.pathname === '/service-listing'
@@ -83,6 +85,11 @@ function App() {
                 </a>
               </li>
               <li className="nav-item">
+                <a className="nav-link text-white" href="/service-dashboard">
+                  Service Dashboard
+                </a>
+              </li>
+              <li className="nav-item">
                 <a className="nav-link text-white" href="/property-listing">
                   List a Property
                 </a>
@@ -103,6 +110,8 @@ function App() {
         <ProviderLogin />
       ) : isPropertyDashboard ? (
         <PropertyDashboard />
+      ) : isServiceDashboard ? (
+        <ServiceDashboard />
       ) : isPropertyListing ? (
         <PropertyListing />
       ) : isPropertyResults ? (
