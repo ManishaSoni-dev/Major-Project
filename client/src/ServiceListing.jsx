@@ -1,25 +1,50 @@
 import { useEffect, useRef, useState } from 'react'
-import { apiRequest } from './api.js'
+import { API_ORIGIN, apiRequest } from './api.js'
 
 function ServiceListing() {
+  const listingId = new URLSearchParams(window.location.search).get('edit')
+  const isEditing = Boolean(listingId)
   const [submitted, setSubmitted] = useState(false)
   const [notice, setNotice] = useState('')
   const [serviceAreaInput, setServiceAreaInput] = useState('')
   const [serviceAreas, setServiceAreas] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [listing, setListing] = useState(null)
+  const [isLoading, setIsLoading] = useState(isEditing)
+  const [retainedPhotos, setRetainedPhotos] = useState([])
   const [selectedPhotos, setSelectedPhotos] = useState([])
   const photoPreviewUrls = useRef([])
 
   useEffect(() => {
+    if (!isEditing) {
+      return () => photoPreviewUrls.current.forEach((url) => URL.revokeObjectURL(url))
+    }
+    let isMounted = true
+
+    apiRequest(`/service-listings/mine/${encodeURIComponent(listingId)}`)
+      .then((result) => {
+        if (!isMounted) return
+        setListing(result.listing)
+        setServiceAreas(result.listing.serviceAreas)
+        setRetainedPhotos(result.listing.images)
+      })
+      .catch((requestError) => {
+        if (isMounted) setNotice(requestError.message)
+      })
+      .finally(() => {
+        if (isMounted) setIsLoading(false)
+      })
+
     return () => {
+      isMounted = false
       photoPreviewUrls.current.forEach((url) => URL.revokeObjectURL(url))
     }
-  }, [])
+  }, [isEditing, listingId])
 
   function handlePhotoSelection(event) {
     const photos = Array.from(event.currentTarget.files || [])
     event.currentTarget.value = ''
-    if (selectedPhotos.length + photos.length > 8) {
+    if (retainedPhotos.length + selectedPhotos.length + photos.length > 8) {
       setNotice('You can add up to 8 photos. Remove a photo before adding another.')
       return
     }
@@ -74,13 +99,21 @@ function ServiceListing() {
     setIsSubmitting(true)
     try {
       const formData = new FormData(event.currentTarget)
+      formData.set('retainedImages', JSON.stringify(retainedPhotos))
       for (const photo of selectedPhotos) {
         formData.append('photos', photo.file)
       }
-      await apiRequest('/service-listings', {
-        method: 'POST',
-        body: formData,
-      })
+      if (isEditing) {
+        await apiRequest(`/service-listings/${encodeURIComponent(listingId)}`, {
+          method: 'PUT',
+          body: formData,
+        })
+      } else {
+        await apiRequest('/service-listings', {
+          method: 'POST',
+          body: formData,
+        })
+      }
       setSubmitted(true)
     } catch (requestError) {
       setNotice(requestError.message)
@@ -94,31 +127,37 @@ function ServiceListing() {
       <div className="row justify-content-center">
         <div className="col-lg-9 col-xl-8">
           <div className="mb-4">
-            <a className="text-decoration-none" href="/provider-registration">
-              &larr; Back to provider registration
+            <a className="text-decoration-none" href="/service-dashboard">
+              &larr; Back to dashboard
             </a>
-            <h1 className="h2 fw-bold mt-3 mb-1">Create a service listing</h1>
+            <h1 className="h2 fw-bold mt-3 mb-1">{isEditing ? 'Edit service listing' : 'Create a service listing'}</h1>
             <p className="text-secondary mb-0">
               Tell customers what service you provide, where you work, and how to contact you.
             </p>
           </div>
 
           <div className="alert alert-info" role="note">
-            Your service listing will be saved and published. Contact details come from your provider profile.
+            {isEditing
+              ? 'Update your listing details, keep or remove existing photos, and add new ones.'
+              : 'Your service listing will be saved and published. Contact details come from your provider profile.'}
           </div>
 
           {submitted && (
             <div className="alert alert-success" role="status">
-              Your service listing was saved.
+              Your service listing was {isEditing ? 'updated' : 'saved'}.
+              {' '}<a href="/service-dashboard" className="alert-link">Open dashboard</a>
             </div>
           )}
           {notice && <div className="alert alert-danger" role="alert">{notice}</div>}
 
+          {isLoading ? (
+            <p className="text-secondary" role="status">Loading service listing...</p>
+          ) : isEditing && !listing ? null : (
           <form className="card border-0 shadow-sm" onSubmit={handleSubmit}>
             <div className="card-body p-4 p-md-5">
               <div className="row g-3">
                 <div className="col-12">
-                  <label className="form-label" htmlFor="servicePhotos">Previous work </label>
+                  <label className="form-label" htmlFor="servicePhotos">Previous work</label>
                   <input
                     className="form-control"
                     id="servicePhotos"
@@ -129,10 +168,27 @@ function ServiceListing() {
                   />
                   <div className="form-text">
                     Choose one or more JPEG, PNG, or WebP images at a time; select again to add more. Up to 8 photos, 5 MB each.
-                    {selectedPhotos.length > 0 && ` ${selectedPhotos.length} photos selected.`}
+                    {(retainedPhotos.length > 0 || selectedPhotos.length > 0)
+                      && ` ${retainedPhotos.length + selectedPhotos.length} photos selected in total.`}
                   </div>
-                  {selectedPhotos.length > 0 && (
-                    <div className="d-flex flex-wrap gap-2 mt-3" aria-label="Selected service photo previews">
+                  {(retainedPhotos.length > 0 || selectedPhotos.length > 0) && (
+                    <div className="d-flex flex-wrap gap-2 mt-3" aria-label="Service photo previews">
+                      {retainedPhotos.map((imageUrl) => (
+                        <div className="position-relative" key={imageUrl}>
+                          <img
+                            src={`${API_ORIGIN}${imageUrl}`}
+                            alt="Current service photo"
+                            className="rounded object-fit-cover border"
+                            style={{ width: '100px', height: '80px' }}
+                          />
+                          <button
+                            className="btn-close position-absolute top-0 end-0 m-1 bg-white rounded-circle p-1"
+                            type="button"
+                            aria-label="Remove current service photo"
+                            onClick={() => setRetainedPhotos((current) => current.filter((item) => item !== imageUrl))}
+                          />
+                        </div>
+                      ))}
                       {selectedPhotos.map(({ file, url }) => (
                         <div className="position-relative" key={url}>
                           <img
@@ -159,6 +215,7 @@ function ServiceListing() {
                     className="form-control"
                     id="serviceTitle"
                     name="title"
+                    defaultValue={listing?.title ?? ''}
                     placeholder="e.g. ABC Plumbing Services"
                     maxLength={100}
                     required
@@ -167,7 +224,7 @@ function ServiceListing() {
 
                 <div className="col-md-6">
                   <label className="form-label" htmlFor="serviceCategory">Service category</label>
-                  <select className="form-select" id="serviceCategory" name="category" defaultValue="" required>
+                  <select className="form-select" id="serviceCategory" name="category" defaultValue={listing?.categoryCode ?? ''} required>
                     <option value="" disabled>Select a category</option>
                     <option value="plumbing">Plumbing</option>
                     <option value="electrical">Electrical</option>
@@ -190,6 +247,7 @@ function ServiceListing() {
                       className="form-control"
                       id="servicePrice"
                       name="price"
+                      defaultValue={listing?.price ?? ''}
                       type="number"
                       min="1"
                       step="1"
@@ -201,7 +259,7 @@ function ServiceListing() {
 
                 <div className="col-md-6">
                   <label className="form-label" htmlFor="servicePricingUnit">Price is per</label>
-                  <select className="form-select" id="servicePricingUnit" name="pricingUnit" defaultValue="" required>
+                  <select className="form-select" id="servicePricingUnit" name="pricingUnit" defaultValue={listing?.pricingUnit ?? ''} required>
                     <option value="" disabled>Select pricing unit</option>
                     <option value="visit">Visit</option>
                     <option value="hour">Hour</option>
@@ -262,6 +320,7 @@ function ServiceListing() {
                     className="form-control"
                     id="serviceDescription"
                     name="description"
+                    defaultValue={listing?.description ?? ''}
                     rows="5"
                     maxLength={2000}
                     placeholder="Describe your experience, services offered, and any important details."
@@ -272,12 +331,13 @@ function ServiceListing() {
 
               <div className="d-flex flex-column flex-sm-row gap-2 mt-4">
                 <button className="btn btn-primary" type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? 'Saving listing...' : 'Publish service listing'}
+                  {isSubmitting ? 'Saving listing...' : isEditing ? 'Save changes' : 'Publish service listing'}
                 </button>
-                <a className="btn btn-outline-secondary" href="/">Cancel</a>
+                <a className="btn btn-outline-secondary" href="/service-dashboard">Cancel</a>
               </div>
             </div>
           </form>
+          )}
         </div>
       </div>
     </main>

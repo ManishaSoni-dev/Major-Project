@@ -74,6 +74,23 @@ function positiveNumber(value) {
   return Number.isFinite(number) && number > 0 ? number : null
 }
 
+function retainedImageUrls(value) {
+  if (value === undefined) return undefined
+
+  let urls
+  try {
+    urls = typeof value === 'string' ? JSON.parse(value) : value
+  } catch {
+    return null
+  }
+  if (!Array.isArray(urls) || urls.length > 8
+      || urls.some((url) => typeof url !== 'string' || !url.startsWith('/uploads/'))
+      || new Set(urls).size !== urls.length) {
+    return null
+  }
+  return urls
+}
+
 async function getProviderTypes(providerId) {
   const [rows] = await pool.execute(
     `SELECT pt.code
@@ -100,7 +117,7 @@ function imageExtension(file) {
   return null
 }
 
-async function saveImages(connection, tableName, listingId, files) {
+async function saveImages(connection, tableName, listingId, files, sortOrderStart = 0) {
   const allowedTables = {
     property_listing_images: 'property_listing_id',
     service_listing_images: 'service_listing_id',
@@ -127,7 +144,7 @@ async function saveImages(connection, tableName, listingId, files) {
       savedPaths.push(imagePath)
       await connection.execute(
         `INSERT INTO ${tableName} (${foreignKey}, image_url, sort_order) VALUES (?, ?, ?)`,
-        [listingId, `/uploads/${filename}`, index],
+        [listingId, `/uploads/${filename}`, sortOrderStart + index],
       )
     }
     return savedPaths
@@ -529,6 +546,207 @@ router.get('/property-listings/mine', requireProvider, async (req, res) => {
   res.json({ listings: rows })
 })
 
+router.get('/property-listings/mine/:id', requireProvider, async (req, res) => {
+  const listingId = Number(req.params.id)
+  if (!Number.isSafeInteger(listingId) || listingId < 1) {
+    res.status(400).json({ error: 'Choose a valid property listing.' })
+    return
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT l.id, l.title, t.name AS type, l.purpose,
+            l.furnishing_status AS furnishingStatus, l.price, l.area_sqft AS areaSqft,
+            l.bedrooms, l.bathrooms, l.city, l.locality, l.address, l.description
+     FROM property_listings l
+     JOIN property_types t ON t.id = l.property_type_id
+     WHERE l.id = ? AND l.provider_id = ?
+     LIMIT 1`,
+    [listingId, req.provider.id],
+  )
+  if (rows.length === 0) {
+    res.status(404).json({ error: 'Property listing not found.' })
+    return
+  }
+
+  const listing = rows[0]
+  listing.category = Object.entries(propertyTypeNames)
+    .find(([, name]) => name === listing.type)?.[0]
+  if (!listing.category) {
+    throw new Error('The property type is not configured in the application.')
+  }
+  const [images] = await pool.execute(
+    'SELECT image_url AS imageUrl FROM property_listing_images WHERE property_listing_id = ? ORDER BY sort_order',
+    [listingId],
+  )
+  listing.images = images.map((image) => image.imageUrl)
+  res.json({ listing })
+})
+
+router.put(
+  '/property-listings/:id',
+  requireFrontendOrigin,
+  requireProvider,
+  imageUpload.array('photos', 8),
+  async (req, res) => {
+  const listingId = Number(req.params.id)
+  const {
+    title, purpose, furnishingStatus, bedrooms, bathrooms, city, locality, address, description,
+  } = req.body
+  const propertyType = propertyTypeNames[req.body.category]
+  const price = positiveNumber(req.body.price)
+  const area = positiveNumber(req.body.area)
+  const validPurpose = ['sale', 'rent', 'lease'].includes(purpose)
+  const validFurnishing = ['unfurnished', 'semi-furnished', 'fully-furnished'].includes(furnishingStatus)
+
+  if (!Number.isSafeInteger(listingId) || listingId < 1
+      || !text(title, 200) || !propertyType || !validPurpose || !validFurnishing
+      || !price || !area || !text(city, 100) || !text(locality, 150)
+      || !text(address, 10000) || !text(description, 10000)) {
+    res.status(400).json({ error: 'Complete all required property listing fields with valid values.' })
+    return
+  }
+
+  const connection = await pool.getConnection()
+  const savedPaths = []
+  let removedImageUrls = []
+  try {
+    await connection.beginTransaction()
+    const [ownedListings] = await connection.execute(
+      'SELECT id FROM property_listings WHERE id = ? AND provider_id = ? LIMIT 1',
+      [listingId, req.provider.id],
+    )
+    if (ownedListings.length === 0) {
+      await connection.rollback()
+      res.status(404).json({ error: 'Property listing not found.' })
+      return
+    }
+
+    const [types] = await connection.execute(
+      'SELECT id FROM property_types WHERE name = ? LIMIT 1',
+      [propertyType],
+    )
+    if (types.length === 0) {
+      throw new Error('The selected property type is not configured in the database.')
+    }
+
+    const [images] = await connection.execute(
+      'SELECT image_url AS imageUrl FROM property_listing_images WHERE property_listing_id = ? ORDER BY sort_order',
+      [listingId],
+    )
+    const requestedImages = retainedImageUrls(req.body.retainedImages)
+    const retainedUrls = requestedImages ?? images.map((image) => image.imageUrl)
+    if (requestedImages === null
+        || retainedUrls.some((url) => !images.some((image) => image.imageUrl === url))
+        || retainedUrls.length + (req.files || []).length > 8) {
+      await connection.rollback()
+      res.status(400).json({ error: 'Keep no more than 8 existing and new property photos.' })
+      return
+    }
+
+    removedImageUrls = images
+      .map((image) => image.imageUrl)
+      .filter((imageUrl) => !retainedUrls.includes(imageUrl))
+    for (const imageUrl of removedImageUrls) {
+      await connection.execute(
+        'DELETE FROM property_listing_images WHERE property_listing_id = ? AND image_url = ?',
+        [listingId, imageUrl],
+      )
+    }
+    for (const [index, imageUrl] of retainedUrls.entries()) {
+      await connection.execute(
+        'UPDATE property_listing_images SET sort_order = ? WHERE property_listing_id = ? AND image_url = ?',
+        [index, listingId, imageUrl],
+      )
+    }
+    savedPaths.push(...await saveImages(
+      connection, 'property_listing_images', listingId, req.files || [], retainedUrls.length,
+    ))
+
+    await connection.execute(
+      `UPDATE property_listings
+       SET property_type_id = ?, title = ?, purpose = ?, furnishing_status = ?,
+           price = ?, area_sqft = ?, bedrooms = ?, bathrooms = ?, city = ?,
+           locality = ?, address = ?, description = ?
+       WHERE id = ? AND provider_id = ?`,
+      [
+        types[0].id, title.trim(), purpose, furnishingStatus, price, area,
+        bedrooms === 'na' || !bedrooms ? null : bedrooms,
+        bathrooms === 'na' || !bathrooms ? null : bathrooms,
+        city.trim(), locality.trim(), address.trim(), description.trim(),
+        listingId, req.provider.id,
+      ],
+    )
+    await connection.commit()
+    await Promise.all(removedImageUrls.map(async (imageUrl) => {
+      try {
+        await fs.unlink(path.join(uploadDirectory, path.basename(imageUrl)))
+      } catch (error) {
+        if (error.code !== 'ENOENT') console.error('Could not remove property listing image:', error.message)
+      }
+    }))
+    res.json({ listing: { id: listingId } })
+  } catch (error) {
+    await connection.rollback()
+    await Promise.all(savedPaths.map((imagePath) => fs.unlink(imagePath).catch(() => {})))
+    throw error
+  } finally {
+    connection.release()
+  }
+  },
+)
+
+router.delete('/property-listings/:id', requireFrontendOrigin, requireProvider, async (req, res) => {
+  const listingId = Number(req.params.id)
+  if (!Number.isSafeInteger(listingId) || listingId < 1) {
+    res.status(400).json({ error: 'Choose a valid property listing.' })
+    return
+  }
+
+  const connection = await pool.getConnection()
+  let imageUrls
+  try {
+    await connection.beginTransaction()
+    const [ownedListings] = await connection.execute(
+      'SELECT id FROM property_listings WHERE id = ? AND provider_id = ? LIMIT 1',
+      [listingId, req.provider.id],
+    )
+    if (ownedListings.length === 0) {
+      await connection.rollback()
+      res.status(404).json({ error: 'Property listing not found.' })
+      return
+    }
+    const [images] = await connection.execute(
+      'SELECT image_url AS imageUrl FROM property_listing_images WHERE property_listing_id = ?',
+      [listingId],
+    )
+    imageUrls = images.map((image) => image.imageUrl)
+    await connection.execute(
+      'DELETE FROM property_listing_images WHERE property_listing_id = ?',
+      [listingId],
+    )
+    await connection.execute(
+      'DELETE FROM property_listings WHERE id = ? AND provider_id = ?',
+      [listingId, req.provider.id],
+    )
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+
+  await Promise.all(imageUrls.map(async (imageUrl) => {
+    if (typeof imageUrl !== 'string' || !imageUrl.startsWith('/uploads/')) return
+    try {
+      await fs.unlink(path.join(uploadDirectory, path.basename(imageUrl)))
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error('Could not remove property listing image:', error.message)
+    }
+  }))
+  res.status(204).end()
+})
+
 router.get('/service-listings/mine', requireProvider, async (req, res) => {
   const [rows] = await pool.execute(
     `SELECT l.id, l.title, c.name AS category, l.price, l.pricing_unit AS pricingUnit,
@@ -562,6 +780,216 @@ router.get('/service-listings/mine', requireProvider, async (req, res) => {
   }
 
   res.json({ listings: rows })
+})
+
+router.get('/service-listings/mine/:id', requireProvider, async (req, res) => {
+  const listingId = Number(req.params.id)
+  if (!Number.isSafeInteger(listingId) || listingId < 1) {
+    res.status(400).json({ error: 'Choose a valid service listing.' })
+    return
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT l.id, l.title, c.name AS category, l.price, l.pricing_unit AS pricingUnit,
+            l.description
+     FROM service_listings l
+     JOIN service_categories c ON c.id = l.category_id
+     WHERE l.id = ? AND l.provider_id = ?
+     LIMIT 1`,
+    [listingId, req.provider.id],
+  )
+  if (rows.length === 0) {
+    res.status(404).json({ error: 'Service listing not found.' })
+    return
+  }
+
+  const listing = rows[0]
+  listing.categoryCode = Object.entries(serviceCategoryNames)
+    .find(([, name]) => name === listing.category)?.[0]
+  if (!listing.categoryCode) {
+    throw new Error('The service category is not configured in the application.')
+  }
+  const [areas] = await pool.execute(
+    'SELECT area FROM service_listing_areas WHERE service_listing_id = ? ORDER BY area',
+    [listingId],
+  )
+  listing.serviceAreas = areas.map((area) => area.area)
+  const [images] = await pool.execute(
+    'SELECT image_url AS imageUrl FROM service_listing_images WHERE service_listing_id = ? ORDER BY sort_order',
+    [listingId],
+  )
+  listing.images = images.map((image) => image.imageUrl)
+  res.json({ listing })
+})
+
+router.put(
+  '/service-listings/:id',
+  requireFrontendOrigin,
+  requireProvider,
+  imageUpload.array('photos', 8),
+  async (req, res) => {
+  const listingId = Number(req.params.id)
+  const title = text(req.body.title, 200)
+  const categoryName = serviceCategoryNames[req.body.category]
+  const price = positiveNumber(req.body.price)
+  const pricingUnit = req.body.pricingUnit
+  const description = text(req.body.description, 10000)
+  const areas = arrayOfStrings(
+    Array.isArray(req.body.serviceAreas) ? req.body.serviceAreas : [req.body.serviceAreas],
+    50,
+    200,
+  )
+  if (!Number.isSafeInteger(listingId) || listingId < 1
+      || !title || !categoryName || !price || !['visit', 'hour', 'day', 'job'].includes(pricingUnit)
+      || !description || !areas?.length) {
+    res.status(400).json({ error: 'Complete all required service listing fields and add at least one service area.' })
+    return
+  }
+
+  const connection = await pool.getConnection()
+  const savedPaths = []
+  let removedImageUrls = []
+  try {
+    await connection.beginTransaction()
+    const [ownedListings] = await connection.execute(
+      'SELECT id FROM service_listings WHERE id = ? AND provider_id = ? LIMIT 1',
+      [listingId, req.provider.id],
+    )
+    if (ownedListings.length === 0) {
+      await connection.rollback()
+      res.status(404).json({ error: 'Service listing not found.' })
+      return
+    }
+    const [categories] = await connection.execute(
+      'SELECT id FROM service_categories WHERE name = ? LIMIT 1',
+      [categoryName],
+    )
+    if (categories.length === 0) {
+      throw new Error('The selected service category is not configured in the database.')
+    }
+
+    const [images] = await connection.execute(
+      'SELECT image_url AS imageUrl FROM service_listing_images WHERE service_listing_id = ? ORDER BY sort_order',
+      [listingId],
+    )
+    const requestedImages = retainedImageUrls(req.body.retainedImages)
+    const retainedUrls = requestedImages ?? images.map((image) => image.imageUrl)
+    if (requestedImages === null
+        || retainedUrls.some((url) => !images.some((image) => image.imageUrl === url))
+        || retainedUrls.length + (req.files || []).length > 8) {
+      await connection.rollback()
+      res.status(400).json({ error: 'Keep no more than 8 existing and new service photos.' })
+      return
+    }
+
+    removedImageUrls = images
+      .map((image) => image.imageUrl)
+      .filter((imageUrl) => !retainedUrls.includes(imageUrl))
+    for (const imageUrl of removedImageUrls) {
+      await connection.execute(
+        'DELETE FROM service_listing_images WHERE service_listing_id = ? AND image_url = ?',
+        [listingId, imageUrl],
+      )
+    }
+    for (const [index, imageUrl] of retainedUrls.entries()) {
+      await connection.execute(
+        'UPDATE service_listing_images SET sort_order = ? WHERE service_listing_id = ? AND image_url = ?',
+        [index, listingId, imageUrl],
+      )
+    }
+    savedPaths.push(...await saveImages(
+      connection, 'service_listing_images', listingId, req.files || [], retainedUrls.length,
+    ))
+
+    await connection.execute(
+      `UPDATE service_listings
+       SET category_id = ?, title = ?, price = ?, pricing_unit = ?, description = ?
+       WHERE id = ? AND provider_id = ?`,
+      [categories[0].id, title, price, pricingUnit, description, listingId, req.provider.id],
+    )
+    await connection.execute(
+      'DELETE FROM service_listing_areas WHERE service_listing_id = ?',
+      [listingId],
+    )
+    for (const area of areas) {
+      await connection.execute(
+        'INSERT INTO service_listing_areas (service_listing_id, area) VALUES (?, ?)',
+        [listingId, area],
+      )
+    }
+    await connection.commit()
+    await Promise.all(removedImageUrls.map(async (imageUrl) => {
+      try {
+        await fs.unlink(path.join(uploadDirectory, path.basename(imageUrl)))
+      } catch (error) {
+        if (error.code !== 'ENOENT') console.error('Could not remove service listing image:', error.message)
+      }
+    }))
+    res.json({ listing: { id: listingId } })
+  } catch (error) {
+    await connection.rollback()
+    await Promise.all(savedPaths.map((imagePath) => fs.unlink(imagePath).catch(() => {})))
+    throw error
+  } finally {
+    connection.release()
+  }
+  },
+)
+
+router.delete('/service-listings/:id', requireFrontendOrigin, requireProvider, async (req, res) => {
+  const listingId = Number(req.params.id)
+  if (!Number.isSafeInteger(listingId) || listingId < 1) {
+    res.status(400).json({ error: 'Choose a valid service listing.' })
+    return
+  }
+
+  const connection = await pool.getConnection()
+  let imageUrls
+  try {
+    await connection.beginTransaction()
+    const [ownedListings] = await connection.execute(
+      'SELECT id FROM service_listings WHERE id = ? AND provider_id = ? LIMIT 1',
+      [listingId, req.provider.id],
+    )
+    if (ownedListings.length === 0) {
+      await connection.rollback()
+      res.status(404).json({ error: 'Service listing not found.' })
+      return
+    }
+    const [images] = await connection.execute(
+      'SELECT image_url AS imageUrl FROM service_listing_images WHERE service_listing_id = ?',
+      [listingId],
+    )
+    imageUrls = images.map((image) => image.imageUrl)
+    await connection.execute(
+      'DELETE FROM service_listing_images WHERE service_listing_id = ?',
+      [listingId],
+    )
+    await connection.execute(
+      'DELETE FROM service_listing_areas WHERE service_listing_id = ?',
+      [listingId],
+    )
+    await connection.execute(
+      'DELETE FROM service_listings WHERE id = ? AND provider_id = ?',
+      [listingId, req.provider.id],
+    )
+    await connection.commit()
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+
+  await Promise.all(imageUrls.map(async (imageUrl) => {
+    if (typeof imageUrl !== 'string' || !imageUrl.startsWith('/uploads/')) return
+    try {
+      await fs.unlink(path.join(uploadDirectory, path.basename(imageUrl)))
+    } catch (error) {
+      if (error.code !== 'ENOENT') console.error('Could not remove service listing image:', error.message)
+    }
+  }))
+  res.status(204).end()
 })
 
 router.post('/property-listings/:id/status', requireFrontendOrigin, requireProvider, async (req, res) => {

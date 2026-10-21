@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { API_ORIGIN } from './api.js'
 import './ListingImages.css'
 
-function ListingImages({ images, title, emptyLabel, height = 220, autoPlay = false }) {
+function ListingImages({ images, title, emptyLabel, height = 220, autoPlay = false, linkHref }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const touchStartX = useRef(null)
   const imageCount = images?.length ?? 0
@@ -59,13 +59,25 @@ function ListingImages({ images, title, emptyLabel, height = 220, autoPlay = fal
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <img
-        className="w-100 object-fit-cover"
-        src={`${API_ORIGIN}${images[imageIndex]}`}
-        alt={`${title}, photo ${imageIndex + 1} of ${images.length}`}
-        loading="lazy"
-        style={{ height: `${height}px` }}
-      />
+      {linkHref ? (
+        <a className="d-block" href={linkHref} aria-label={`View ${title}`}>
+          <img
+            className="w-100 object-fit-cover"
+            src={`${API_ORIGIN}${images[imageIndex]}`}
+            alt={`${title}, photo ${imageIndex + 1} of ${images.length}`}
+            loading="lazy"
+            style={{ height: `${height}px` }}
+          />
+        </a>
+      ) : (
+        <img
+          className="w-100 object-fit-cover"
+          src={`${API_ORIGIN}${images[imageIndex]}`}
+          alt={`${title}, photo ${imageIndex + 1} of ${images.length}`}
+          loading="lazy"
+          style={{ height: `${height}px` }}
+        />
+      )}
       {images.length > 1 && !autoPlay && (
         <>
           <button

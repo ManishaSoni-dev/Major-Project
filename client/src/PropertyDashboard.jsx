@@ -52,6 +52,19 @@ function PropertyDashboard() {
     }
   }
 
+  async function deleteListing(listing) {
+    if (!window.confirm(`Delete "${listing.title}"? This also removes its photos and cannot be undone.`)) return
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/property-listings/${listing.id}`, { method: 'DELETE' })
+      setListings((current) => current.filter((item) => item.id !== listing.id))
+      setNotice('Property listing deleted.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
+
   async function signOut() {
     setError('')
     try {
@@ -164,13 +177,28 @@ function PropertyDashboard() {
                       </span>
                     </td>
                     <td className="text-end">
-                      <button
-                        className="btn btn-sm btn-outline-primary"
-                        type="button"
-                        onClick={() => toggleListingStatus(listing)}
-                      >
-                        {listing.status === 'active' ? 'Pause' : 'Activate'}
-                      </button>
+                      <div className="d-flex flex-wrap justify-content-end gap-2">
+                        <a
+                          className="btn btn-sm btn-outline-primary"
+                          href={`/property-listing?edit=${encodeURIComponent(listing.id)}`}
+                        >
+                          Edit
+                        </a>
+                        <button
+                          className="btn btn-sm btn-outline-primary"
+                          type="button"
+                          onClick={() => toggleListingStatus(listing)}
+                        >
+                          {listing.status === 'active' ? 'Pause' : 'Activate'}
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          type="button"
+                          onClick={() => deleteListing(listing)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

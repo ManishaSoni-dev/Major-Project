@@ -9,6 +9,7 @@ import PropertyResults from './PropertyResults.jsx'
 import ServiceDashboard from './ServiceDashboard.jsx'
 import ServiceListing from './ServiceListing.jsx'
 import ServiceResults from './ServiceResults.jsx'
+import SiteFooter from './SiteFooter.jsx'
 
 function App() {
   const [provider, setProvider] = useState(null)
@@ -68,7 +69,7 @@ function App() {
   }
 
   return (
-    <>
+    <div className="app-layout">
       <nav className="navbar navbar-expand-lg site-navbar">
         <div className="container">
           <a className="navbar-brand" href="/" aria-label="SmartServe home">
@@ -178,26 +179,29 @@ function App() {
         </div>
       </nav>
 
-      {isProviderRegistration ? (
-        <ProviderRegistration />
-      ) : isProviderLogin ? (
-        <ProviderLogin />
-      ) : isPropertyDashboard ? (
-        <PropertyDashboard />
-      ) : isServiceDashboard ? (
-        <ServiceDashboard />
-      ) : isPropertyListing ? (
-        <PropertyListing />
-      ) : isPropertyResults ? (
-        <PropertyResults />
-      ) : isServiceListing ? (
-        <ServiceListing />
-      ) : isServiceResults ? (
-        <ServiceResults />
-      ) : (
-        <HomePage />
-      )}
-    </>
+      <div className="app-page-content">
+        {isProviderRegistration ? (
+          <ProviderRegistration />
+        ) : isProviderLogin ? (
+          <ProviderLogin />
+        ) : isPropertyDashboard ? (
+          <PropertyDashboard />
+        ) : isServiceDashboard ? (
+          <ServiceDashboard />
+        ) : isPropertyListing ? (
+          <PropertyListing />
+        ) : isPropertyResults ? (
+          <PropertyResults />
+        ) : isServiceListing ? (
+          <ServiceListing />
+        ) : isServiceResults ? (
+          <ServiceResults />
+        ) : (
+          <HomePage />
+        )}
+      </div>
+      <SiteFooter />
+    </div>
   )
 }
 

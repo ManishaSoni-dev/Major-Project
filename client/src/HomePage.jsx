@@ -96,6 +96,7 @@ function ListingSection({ kind, listings, isLoading, error }) {
             const price = isProperty
               ? `${formatPrice(listing.price)}${listing.purpose === 'sale' ? '' : ' / month'}`
               : `${formatPrice(listing.price)} / ${listing.pricingUnit}`
+            const listingHref = `${href}?q=${encodeURIComponent(listing.title)}`
 
             return (
               <article className="home-listing-card" key={`${kind}-${listing.id}`}>
@@ -105,21 +106,22 @@ function ListingSection({ kind, listings, isLoading, error }) {
                     title={listing.title}
                     emptyLabel={isProperty ? 'No property photos' : 'No work photos'}
                     height={160}
+                    linkHref={listingHref}
                   />
                   <span className={`home-listing-badge ${isProperty ? 'is-property' : 'is-service'}`}>
                     {badge}
                   </span>
                 </div>
                 <div className="home-listing-content">
-                  <h3>{listing.title}</h3>
+                  <h3><a href={listingHref}>{listing.title}</a></h3>
                   <p className="home-listing-location">
                     <span aria-hidden="true">⌖</span> {location || (isProperty ? listing.type : listing.providerName)}
                   </p>
                   <div className="home-listing-footer">
                     <span className="fw-bold">{price}</span>
-                    <span className="home-listing-kind">
-                      {isProperty ? listing.type : listing.providerName}
-                    </span>
+                    <a className="home-listing-kind" href={listingHref}>
+                      {isProperty ? 'View property' : 'View service'} <span aria-hidden="true">→</span>
+                    </a>
                   </div>
                 </div>
               </article>
@@ -298,32 +300,6 @@ function HomePage() {
         <span className="home-bottom-decoration" aria-hidden="true"><Icon name="home" size={76} /></span>
       </section>
 
-      <footer className="home-footer">
-        <div className="container home-footer-inner">
-          <a className="home-footer-brand" href="/">
-            <Icon name="home" size={30} />
-            <span><strong>SmartServe</strong><small>Properties · Services · Your Local Marketplace</small></span>
-          </a>
-          <div className="home-footer-links">
-            <strong>Quick Links</strong>
-            <a href="/">Home</a>
-            <a href="/properties">Properties</a>
-            <a href="/services">Services</a>
-            <a href="/provider-registration">Providers</a>
-          </div>
-          <div className="home-footer-links">
-            <strong>Support</strong>
-            <a href="/#community-comments-title">Help &amp; feedback</a>
-            <a href="https://www.openstreetmap.org/?mlat=30.7333&amp;mlon=76.7794#map=13/30.7333/76.7794" target="_blank" rel="noreferrer">Our location</a>
-            <a href="/provider-login">Provider sign in</a>
-          </div>
-          <div className="home-footer-links home-footer-social">
-            <strong>Join SmartServe</strong>
-            <a className="home-footer-join" href="/provider-registration">Register as a provider</a>
-            <small>© 2026 SmartServe. All rights reserved.</small>
-          </div>
-        </div>
-      </footer>
     </main>
   )
 }

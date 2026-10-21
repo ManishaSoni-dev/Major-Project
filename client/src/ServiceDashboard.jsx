@@ -11,6 +11,7 @@ function ServiceDashboard() {
   const [listings, setListings] = useState([])
   const [provider, setProvider] = useState(null)
   const [error, setError] = useState('')
+  const [notice, setNotice] = useState('')
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
@@ -33,6 +34,19 @@ function ServiceDashboard() {
       isMounted = false
     }
   }, [])
+
+  async function deleteListing(listing) {
+    if (!window.confirm(`Delete "${listing.title}"? This also removes its photos and cannot be undone.`)) return
+    setError('')
+    setNotice('')
+    try {
+      await apiRequest(`/service-listings/${listing.id}`, { method: 'DELETE' })
+      setListings((current) => current.filter((item) => item.id !== listing.id))
+      setNotice('Service listing deleted.')
+    } catch (requestError) {
+      setError(requestError.message)
+    }
+  }
 
   async function signOut() {
     setError('')
@@ -69,6 +83,7 @@ function ServiceDashboard() {
             : null}
         </div>
       )}
+      {notice && <div className="alert alert-success" role="status">{notice}</div>}
 
       <section className="row g-3 mb-4" aria-label="Service listing summary">
         {[
@@ -106,6 +121,7 @@ function ServiceDashboard() {
                   <th scope="col">Category</th>
                   <th scope="col">Starting price</th>
                   <th scope="col">Status</th>
+                  <th scope="col"><span className="visually-hidden">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -136,6 +152,23 @@ function ServiceDashboard() {
                       <span className={`badge ${listing.status === 'active' ? 'text-bg-success' : 'text-bg-secondary'}`}>
                         {listing.status}
                       </span>
+                    </td>
+                    <td className="text-end">
+                      <div className="d-flex flex-wrap justify-content-end gap-2">
+                        <a
+                          className="btn btn-sm btn-outline-primary"
+                          href={`/service-listing?edit=${encodeURIComponent(listing.id)}`}
+                        >
+                          Edit
+                        </a>
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          type="button"
+                          onClick={() => deleteListing(listing)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
