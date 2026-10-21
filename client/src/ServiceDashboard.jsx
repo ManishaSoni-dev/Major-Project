@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiRequest } from './api.js'
+import ListingImages from './ListingImages.jsx'
 
 function formatPrice(price, pricingUnit) {
   const amount = `₹${new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }).format(Number(price))}`
@@ -110,7 +111,25 @@ function ServiceDashboard() {
               <tbody>
                 {listings.map((listing) => (
                   <tr key={listing.id}>
-                    <td className="fw-semibold">{listing.title}</td>
+                    <td>
+                      <div className="d-flex align-items-center gap-3">
+                        <div className="flex-shrink-0" style={{ width: '160px' }}>
+                          <ListingImages
+                            images={listing.images}
+                            title={listing.title}
+                            emptyLabel="No photos uploaded"
+                            height={120}
+                            autoPlay
+                          />
+                        </div>
+                        <div>
+                          <div className="fw-semibold">{listing.title}</div>
+                          {listing.images?.length > 1 && (
+                            <div className="small text-secondary">{listing.images.length} photos</div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
                     <td>{listing.category}</td>
                     <td>{formatPrice(listing.price, listing.pricingUnit)}</td>
                     <td>

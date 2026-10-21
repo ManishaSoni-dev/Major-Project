@@ -1,15 +1,27 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { API_ORIGIN } from './api.js'
+import './ListingImages.css'
 
-function ListingImages({ images, title, emptyLabel }) {
+function ListingImages({ images, title, emptyLabel, height = 220, autoPlay = false }) {
   const [activeIndex, setActiveIndex] = useState(0)
   const touchStartX = useRef(null)
+  const imageCount = images?.length ?? 0
+
+  useEffect(() => {
+    if (!autoPlay || imageCount < 2) return undefined
+
+    const intervalId = window.setInterval(() => {
+      setActiveIndex((index) => (index + 1) % imageCount)
+    }, 3000)
+
+    return () => window.clearInterval(intervalId)
+  }, [autoPlay, imageCount])
 
   if (!images?.length) {
     return (
       <div
         className="bg-light d-flex align-items-center justify-content-center text-secondary"
-        style={{ minHeight: '150px' }}
+        style={{ minHeight: `${Math.min(height, 150)}px` }}
       >
         {emptyLabel}
       </div>
@@ -42,7 +54,7 @@ function ListingImages({ images, title, emptyLabel }) {
 
   return (
     <div
-      className="position-relative bg-light overflow-hidden"
+      className="listing-images position-relative bg-light overflow-hidden"
       aria-label={`${images.length} photos for ${title}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -52,12 +64,12 @@ function ListingImages({ images, title, emptyLabel }) {
         src={`${API_ORIGIN}${images[imageIndex]}`}
         alt={`${title}, photo ${imageIndex + 1} of ${images.length}`}
         loading="lazy"
-        style={{ height: '220px' }}
+        style={{ height: `${height}px` }}
       />
-      {images.length > 1 && (
+      {images.length > 1 && !autoPlay && (
         <>
           <button
-            className="btn btn-light rounded-circle position-absolute top-50 start-0 translate-middle-y ms-2 shadow-sm d-flex align-items-center justify-content-center"
+            className="listing-image-control btn btn-dark text-white rounded-circle position-absolute top-50 start-0 translate-middle-y ms-2 shadow d-flex align-items-center justify-content-center"
             type="button"
             aria-label="Show previous photo"
             onClick={showPreviousImage}
@@ -68,7 +80,7 @@ function ListingImages({ images, title, emptyLabel }) {
             </svg>
           </button>
           <button
-            className="btn btn-light rounded-circle position-absolute top-50 end-0 translate-middle-y me-2 shadow-sm d-flex align-items-center justify-content-center"
+            className="listing-image-control btn btn-dark text-white rounded-circle position-absolute top-50 end-0 translate-middle-y me-2 shadow d-flex align-items-center justify-content-center"
             type="button"
             aria-label="Show next photo"
             onClick={showNextImage}

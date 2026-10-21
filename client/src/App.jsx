@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import HomePage from './HomePage.jsx'
+import { apiRequest } from './api.js'
 import ProviderLogin from './ProviderLogin.jsx'
 import ProviderRegistration from './ProviderRegistration.jsx'
 import PropertyDashboard from './PropertyDashboard.jsx'
@@ -7,12 +9,40 @@ import PropertyResults from './PropertyResults.jsx'
 import ServiceDashboard from './ServiceDashboard.jsx'
 import ServiceListing from './ServiceListing.jsx'
 import ServiceResults from './ServiceResults.jsx'
-import WorkGallery from './WorkGallery.jsx'
 
 function App() {
-  const [searchType, setSearchType] = useState('property')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [searchNotice, setSearchNotice] = useState('')
+  const [provider, setProvider] = useState(null)
+  const [isProviderChecked, setIsProviderChecked] = useState(false)
+  const [providerStatusError, setProviderStatusError] = useState('')
+  const [signOutError, setSignOutError] = useState('')
+  const [isSigningOut, setIsSigningOut] = useState(false)
+
+  useEffect(() => {
+    let isMounted = true
+
+    apiRequest('/auth/me')
+      .then((result) => {
+        if (isMounted) setProvider(result.provider)
+      })
+      .catch((error) => {
+        if (!isMounted) return
+        if (
+          error.message !== 'Sign in as a provider to continue.'
+          && error.message !== 'Your provider session expired. Please sign in again.'
+        ) {
+          setProviderStatusError(error.message)
+        }
+      })
+      .finally(() => {
+        if (isMounted) setIsProviderChecked(true)
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const isHome = window.location.pathname === '/'
   const isProviderRegistration = window.location.pathname === '/provider-registration'
   const isProviderLogin = window.location.pathname === '/provider-login'
   const isPropertyDashboard = window.location.pathname === '/property-dashboard'
@@ -21,85 +51,129 @@ function App() {
   const isPropertyResults = window.location.pathname === '/properties'
   const isServiceListing = window.location.pathname === '/service-listing'
   const isServiceResults = window.location.pathname === '/services'
+  const providerTypes = provider?.providerTypes ?? []
+  const providesProperties = providerTypes.includes('property')
+  const providesServices = providerTypes.includes('service')
 
-  function handleSearch(event) {
-    event.preventDefault()
-
-    if (!searchTerm.trim()) {
-      setSearchNotice('Enter a location or keyword to search.')
-      return
+  async function handleSignOut() {
+    setSignOutError('')
+    setIsSigningOut(true)
+    try {
+      await apiRequest('/auth/logout', { method: 'POST' })
+      window.location.assign('/provider-login')
+    } catch (error) {
+      setSignOutError(error.message)
+      setIsSigningOut(false)
     }
-
-    if (searchType === 'property') {
-      window.location.assign(`/properties?q=${encodeURIComponent(searchTerm.trim())}`)
-      return
-    }
-
-    window.location.assign(`/services?q=${encodeURIComponent(searchTerm.trim())}`)
   }
 
   return (
     <>
-      <nav className="navbar navbar-expand-md navbar-dark bg-dark">
+      <nav className="navbar navbar-expand-lg site-navbar">
         <div className="container">
-          <a className="navbar-brand text-white" href="/">
-            SmartServe
+          <a className="navbar-brand" href="/" aria-label="SmartServe home">
+            <span className="site-brand-mark" aria-hidden="true">
+              <svg width="31" height="31" viewBox="0 0 32 32" fill="none">
+                <path d="M3 14.2 16 3l13 11.2v14.3h-9v-9h-8v9H3V14.2Z" fill="currentColor" />
+                <path d="M19.5 4h7v7.2" stroke="#18345b" strokeWidth="3" strokeLinejoin="round" />
+              </svg>
+            </span>
+            <span>
+              <span className="site-brand-name">SmartServe</span>
+              <span className="site-brand-tagline">Properties · Services · Your Local Marketplace</span>
+            </span>
           </a>
 
           <button
             className="navbar-toggler"
             type="button"
             data-bs-toggle="collapse"
-            data-bs-target="#navbarNav"
-            aria-controls="navbarNav"
+            data-bs-target="#siteNavbar"
+            aria-controls="siteNavbar"
             aria-expanded="false"
             aria-label="Toggle navigation"
           >
-            <span className="navbar-toggler-icon"></span>
+            <span className="navbar-toggler-icon" />
           </button>
 
-          <div className="collapse navbar-collapse" id="navbarNav">
-            <ul className="navbar-nav ms-auto">
+          <div className="collapse navbar-collapse" id="siteNavbar">
+            <ul className="navbar-nav mx-auto">
               <li className="nav-item">
-                <a className="nav-link text-white" href="/">Home</a>
+                <a className={`nav-link ${isHome ? 'active' : ''}`} href="/">Home</a>
               </li>
               <li className="nav-item">
-                <a className="nav-link text-white" href="/services">Services</a>
+                <a className={`nav-link ${isPropertyResults ? 'active' : ''}`} href="/properties">Properties</a>
               </li>
               <li className="nav-item">
-                <a className="nav-link text-white" href="/properties">Properties</a>
+                <a className={`nav-link ${isServiceResults ? 'active' : ''}`} href="/services">Services</a>
               </li>
               <li className="nav-item">
-                <a className="nav-link text-white" href="/provider-registration">
-                  Provider Register
-                </a>
+                <a className="nav-link" href="/provider-registration">Providers</a>
               </li>
-              <li className="nav-item">
-                <a className="nav-link text-white" href="/provider-login">
-                  Provider Sign In
-                </a>
-              </li>
-              <li className="nav-item">
-                <a className="nav-link text-white" href="/property-dashboard">
-                  Property Dashboard
-                </a>
-              </li>
-              <li className="nav-item">
-                <a className="nav-link text-white" href="/service-dashboard">
-                  Service Dashboard
-                </a>
-              </li>
-              <li className="nav-item">
-                <a className="nav-link text-white" href="/property-listing">
-                  List a Property
-                </a>
-              </li>
-              <li className="nav-item">
-                <a className="nav-link text-white" href="/service-listing">
-                  List a Service
-                </a>
-              </li>
+              {isProviderChecked && provider && (
+                <li className="nav-item dropdown">
+                  <button
+                    className={`nav-link dropdown-toggle${isPropertyDashboard || isPropertyListing || isServiceDashboard || isServiceListing ? ' active' : ''}`}
+                    id="providerMenu"
+                    type="button"
+                    data-bs-toggle="dropdown"
+                    aria-expanded="false"
+                    aria-label="Provider menu"
+                    title="Provider menu"
+                  >
+                    <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M4 6h16M4 12h16M4 18h16" />
+                    </svg>
+                  </button>
+                  <ul className="dropdown-menu" aria-labelledby="providerMenu">
+                    {providesProperties && (
+                      <>
+                        <li><a className={`dropdown-item ${isPropertyDashboard ? 'active' : ''}`} href="/property-dashboard">Property Dashboard</a></li>
+                        <li><a className={`dropdown-item ${isPropertyListing ? 'active' : ''}`} href="/property-listing">List Property</a></li>
+                      </>
+                    )}
+                    {providesServices && (
+                      <>
+                        <li><a className={`dropdown-item ${isServiceDashboard ? 'active' : ''}`} href="/service-dashboard">Service Dashboard</a></li>
+                        <li><a className={`dropdown-item ${isServiceListing ? 'active' : ''}`} href="/service-listing">List Service</a></li>
+                      </>
+                    )}
+                  </ul>
+                </li>
+              )}
             </ul>
+            <div className="site-nav-actions">
+              <a className="site-nav-search" href="/#homeSearchTerm" aria-label="Search properties or services">
+                <svg aria-hidden="true" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                  <circle cx="10.8" cy="10.8" r="6.8" />
+                  <path d="m16 16 5 5" />
+                </svg>
+              </a>
+              {providerStatusError && (
+                <span className="small text-danger" role="status" title={providerStatusError}>
+                  Account status unavailable
+                </span>
+              )}
+              {isProviderChecked && !provider && (
+                <>
+                  <a className="site-nav-login" href="/provider-login">Sign In</a>
+                  <a className="site-nav-signup" href="/provider-registration">Sign Up</a>
+                </>
+              )}
+              {isProviderChecked && provider && (
+                <>
+                  {signOutError && <span className="small text-danger" role="alert">{signOutError}</span>}
+                  <button
+                    className="site-nav-login"
+                    type="button"
+                    onClick={handleSignOut}
+                    disabled={isSigningOut}
+                  >
+                    {isSigningOut ? 'Signing out...' : 'Sign out'}
+                  </button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </nav>
@@ -121,64 +195,7 @@ function App() {
       ) : isServiceResults ? (
         <ServiceResults />
       ) : (
-        <main>
-          <section className="container-fluid bg-light py-5">
-            <div className="container text-center">
-              <h1 className="display-4 fw-bold">Find the Right Service or Property</h1>
-              <p className="lead mt-3">
-                Find trusted service providers and properties in one place.
-              </p>
-
-              <form className="row justify-content-center mt-4 text-start" onSubmit={handleSearch}>
-                <div className="col-lg-3 col-md-4 mb-3">
-                  <label className="form-label fw-semibold" htmlFor="searchType">I want to</label>
-                  <select
-                    className="form-select"
-                    id="searchType"
-                    value={searchType}
-                    onChange={(event) => {
-                      setSearchType(event.target.value)
-                      setSearchNotice('')
-                    }}
-                  >
-                    <option value="property">Find a Property</option>
-                    <option value="service">Find a Service Provider</option>
-                  </select>
-                </div>
-                <div className="col-lg-6 col-md-5 mb-3">
-                  <label className="form-label fw-semibold" htmlFor="searchTerm">
-                    {searchType === 'property' ? 'Location or property type' : 'Location or service'}
-                  </label>
-                  <input
-                    className="form-control"
-                    id="searchTerm"
-                    type="search"
-                    value={searchTerm}
-                    onChange={(event) => {
-                      setSearchTerm(event.target.value)
-                      setSearchNotice('')
-                    }}
-                    placeholder={
-                      searchType === 'property'
-                        ? 'e.g. 2-bedroom flat in Pune'
-                        : 'e.g. plumber in Pune'
-                    }
-                    autoComplete="off"
-                  />
-                </div>
-                <div className="col-lg-2 col-md-3 mb-3 d-flex align-items-end">
-                  <button className="btn btn-primary w-100" type="submit">Search</button>
-                </div>
-                {searchNotice && (
-                  <div className="col-lg-11" role="status" aria-live="polite">
-                    <div className="alert alert-info mb-0">{searchNotice}</div>
-                  </div>
-                )}
-              </form>
-            </div>
-          </section>
-          <WorkGallery />
-        </main>
+        <HomePage />
       )}
     </>
   )

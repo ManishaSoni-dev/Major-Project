@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { apiRequest } from './api.js'
 
 function ServiceListing() {
@@ -7,6 +7,47 @@ function ServiceListing() {
   const [serviceAreaInput, setServiceAreaInput] = useState('')
   const [serviceAreas, setServiceAreas] = useState([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [selectedPhotos, setSelectedPhotos] = useState([])
+  const photoPreviewUrls = useRef([])
+
+  useEffect(() => {
+    return () => {
+      photoPreviewUrls.current.forEach((url) => URL.revokeObjectURL(url))
+    }
+  }, [])
+
+  function handlePhotoSelection(event) {
+    const photos = Array.from(event.currentTarget.files || [])
+    event.currentTarget.value = ''
+    if (selectedPhotos.length + photos.length > 8) {
+      setNotice('You can add up to 8 photos. Remove a photo before adding another.')
+      return
+    }
+    if (photos.some((photo) => photo.size > 5 * 1024 * 1024)) {
+      setNotice('Each photo must be 5 MB or smaller.')
+      return
+    }
+    if (photos.some((photo) => !['image/jpeg', 'image/png', 'image/webp'].includes(photo.type))) {
+      setNotice('Photos must be JPEG, PNG, or WebP images.')
+      return
+    }
+
+    setNotice('')
+    setSelectedPhotos((current) => [
+      ...current,
+      ...photos.map((file) => {
+        const url = URL.createObjectURL(file)
+        photoPreviewUrls.current.push(url)
+        return { file, url }
+      }),
+    ])
+  }
+
+  function removePhoto(url) {
+    URL.revokeObjectURL(url)
+    photoPreviewUrls.current = photoPreviewUrls.current.filter((item) => item !== url)
+    setSelectedPhotos((current) => current.filter((photo) => photo.url !== url))
+  }
 
   function addServiceArea() {
     const area = serviceAreaInput.trim()
@@ -32,9 +73,13 @@ function ServiceListing() {
     setSubmitted(false)
     setIsSubmitting(true)
     try {
+      const formData = new FormData(event.currentTarget)
+      for (const photo of selectedPhotos) {
+        formData.append('photos', photo.file)
+      }
       await apiRequest('/service-listings', {
         method: 'POST',
-        body: new FormData(event.currentTarget),
+        body: formData,
       })
       setSubmitted(true)
     } catch (requestError) {
@@ -77,12 +122,35 @@ function ServiceListing() {
                   <input
                     className="form-control"
                     id="servicePhotos"
-                    name="photos"
                     type="file"
                     accept="image/jpeg,image/png,image/webp"
                     multiple
+                    onChange={handlePhotoSelection}
                   />
-                  <div className="form-text">Upload up to 8 JPEG, PNG, or WebP images, up to 5 MB each.</div>
+                  <div className="form-text">
+                    Choose one or more JPEG, PNG, or WebP images at a time; select again to add more. Up to 8 photos, 5 MB each.
+                    {selectedPhotos.length > 0 && ` ${selectedPhotos.length} photos selected.`}
+                  </div>
+                  {selectedPhotos.length > 0 && (
+                    <div className="d-flex flex-wrap gap-2 mt-3" aria-label="Selected service photo previews">
+                      {selectedPhotos.map(({ file, url }) => (
+                        <div className="position-relative" key={url}>
+                          <img
+                            src={url}
+                            alt={`Selected service photo: ${file.name}`}
+                            className="rounded object-fit-cover border"
+                            style={{ width: '100px', height: '80px' }}
+                          />
+                          <button
+                            className="btn-close position-absolute top-0 end-0 m-1 bg-white rounded-circle p-1"
+                            type="button"
+                            aria-label={`Remove ${file.name}`}
+                            onClick={() => removePhoto(url)}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="col-md-6">

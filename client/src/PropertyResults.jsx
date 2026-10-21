@@ -162,12 +162,26 @@ function PropertyResults() {
                   <h2 className="h5 card-title">{listing.title}</h2>
                   <p className="text-secondary mb-2">{listing.locality}, {listing.city}</p>
                   <p className="card-text text-secondary flex-grow-1">{listing.description}</p>
+                  <div className="border-top pt-3 mb-3">
+                    <div className="fw-semibold mb-1">Contact {listing.providerName}</div>
+                    {listing.contactPhone && (
+                      <div className="small">
+                        <span className="text-secondary me-1">Phone:</span>
+                        <a href={`tel:${listing.contactPhone}`}>{listing.contactPhone}</a>
+                      </div>
+                    )}
+                    {listing.contactEmail && (
+                      <div className="small text-break">
+                        <span className="text-secondary me-1">Email:</span>
+                        <a href={`mailto:${listing.contactEmail}`}>{listing.contactEmail}</a>
+                      </div>
+                    )}
+                  </div>
                   <div className="d-flex justify-content-between align-items-center border-top pt-3">
                     <div>
                       <div className="fw-bold">{formatPrice(listing.price, listing.purpose)}</div>
                       <div className="small text-secondary">{listing.areaSqft} sq. ft.</div>
                     </div>
-                    <span className="small text-secondary">{listing.providerName}</span>
                   </div>
                 </div>
               </article>

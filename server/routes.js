@@ -328,6 +328,48 @@ router.post('/auth/logout', requireFrontendOrigin, async (req, res) => {
   res.status(204).end()
 })
 
+router.get('/comments', async (req, res) => {
+  const [comments] = await pool.execute(
+    `SELECT id, name, email, message, created_at AS createdAt
+     FROM community_comments
+     ORDER BY created_at DESC, id DESC
+     LIMIT 100`,
+  )
+  res.json({ comments })
+})
+
+router.post('/comments', requireFrontendOrigin, async (req, res) => {
+  const name = text(req.body.name, 100)
+  const message = text(req.body.message, 2000)
+  const emailInput = typeof req.body.email === 'string' ? req.body.email.trim() : ''
+  const email = emailInput || null
+
+  if (!name) {
+    res.status(400).json({ error: 'Enter your name (up to 100 characters) to post a comment.' })
+    return
+  }
+  if (!message) {
+    res.status(400).json({ error: 'Enter a comment of up to 2,000 characters.' })
+    return
+  }
+  if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    res.status(400).json({ error: 'Enter a valid email address or leave it blank.' })
+    return
+  }
+
+  const [result] = await pool.execute(
+    'INSERT INTO community_comments (name, email, message) VALUES (?, ?, ?)',
+    [name, email, message],
+  )
+  const [comments] = await pool.execute(
+    `SELECT id, name, email, message, created_at AS createdAt
+     FROM community_comments
+     WHERE id = ?`,
+    [result.insertId],
+  )
+  res.status(201).json({ comment: comments[0] })
+})
+
 router.post(
   '/property-listings',
   requireFrontendOrigin,
@@ -497,6 +539,28 @@ router.get('/service-listings/mine', requireProvider, async (req, res) => {
      ORDER BY l.created_at DESC`,
     [req.provider.id],
   )
+
+  if (rows.length > 0) {
+    const listingIds = rows.map((listing) => listing.id)
+    const placeholders = listingIds.map(() => '?').join(', ')
+    const [images] = await pool.execute(
+      `SELECT service_listing_id AS listingId, image_url AS imageUrl
+       FROM service_listing_images
+       WHERE service_listing_id IN (${placeholders})
+       ORDER BY service_listing_id, sort_order`,
+      listingIds,
+    )
+    const imagesByListing = new Map()
+    for (const image of images) {
+      const listingImages = imagesByListing.get(image.listingId) || []
+      listingImages.push(image.imageUrl)
+      imagesByListing.set(image.listingId, listingImages)
+    }
+    for (const listing of rows) {
+      listing.images = imagesByListing.get(listing.id) || []
+    }
+  }
+
   res.json({ listings: rows })
 })
 
@@ -548,7 +612,8 @@ router.get('/property-listings', async (req, res) => {
   const [rows] = await pool.execute(
     `SELECT l.id, l.title, t.name AS type, l.purpose, l.furnishing_status AS furnishingStatus,
             l.price, l.area_sqft AS areaSqft, l.bedrooms, l.bathrooms, l.city, l.locality,
-            l.description, p.business_name AS providerName, l.created_at AS createdAt
+           l.description, p.business_name AS providerName, p.phone AS contactPhone,
+           p.email AS contactEmail, l.created_at AS createdAt
      FROM property_listings l
      JOIN property_types t ON t.id = l.property_type_id
      JOIN providers p ON p.id = l.provider_id
@@ -605,14 +670,14 @@ router.get('/service-listings', async (req, res) => {
   const [rows] = await pool.execute(
     `SELECT l.id, l.title, c.name AS category, l.price, l.pricing_unit AS pricingUnit,
           l.description, p.business_name AS providerName, p.phone AS contactPhone,
-          l.created_at AS createdAt,
+          p.email AS contactEmail, l.created_at AS createdAt,
           GROUP_CONCAT(DISTINCT a.area ORDER BY a.area SEPARATOR ', ') AS serviceAreas
     FROM service_listings l
      JOIN service_categories c ON c.id = l.category_id
      JOIN providers p ON p.id = l.provider_id
      LEFT JOIN service_listing_areas a ON a.service_listing_id = l.id
      WHERE ${conditions.join(' AND ')}
-     GROUP BY l.id, c.name, p.business_name, p.phone
+     GROUP BY l.id, c.name, p.business_name, p.phone, p.email
      ORDER BY l.created_at DESC
      LIMIT 100`,
     parameters,

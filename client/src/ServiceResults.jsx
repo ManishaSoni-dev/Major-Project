@@ -149,11 +149,23 @@ function ServiceResults() {
                   <p className="small text-secondary mb-3">
                     <strong>Service areas:</strong> {provider.serviceAreas}
                   </p>
-                  <div className="d-flex justify-content-between align-items-center border-top pt-3">
+                  <div className="border-top pt-3 mb-3">
+                    <div className="fw-semibold mb-1">Contact provider</div>
+                    {provider.contactPhone && (
+                      <div className="small">
+                        <span className="text-secondary me-1">Phone:</span>
+                        <a href={`tel:${provider.contactPhone}`}>{provider.contactPhone}</a>
+                      </div>
+                    )}
+                    {provider.contactEmail && (
+                      <div className="small text-break">
+                        <span className="text-secondary me-1">Email:</span>
+                        <a href={`mailto:${provider.contactEmail}`}>{provider.contactEmail}</a>
+                      </div>
+                    )}
+                  </div>
+                  <div className="border-top pt-3">
                     <span className="fw-bold">{priceLabel(provider)}</span>
-                    <a className="btn btn-sm btn-outline-primary" href={`tel:${provider.contactPhone}`}>
-                      Call provider
-                    </a>
                   </div>
                 </div>
               </article>

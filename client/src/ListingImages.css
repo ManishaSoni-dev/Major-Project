@@ -1,0 +1,21 @@
+.listing-image-control {
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+
+.listing-images:hover .listing-image-control,
+.listing-images:focus-within .listing-image-control {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .listing-image-control {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-image-control {
+    transition: none;
+  }
+}
